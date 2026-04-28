@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#0a0a0a" />
+<title>Basic Rentals · Pricing Engine</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #0a0a0a; color: #e8e8e8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+  body { padding: 20px 12px; }
+  .container { max-width: 820px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 600; color: #fff; }
+  .subtitle { font-size: 10px; color: #444; letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 4px; }
+  .header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 18px; }
+  .panel { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 14px; margin-bottom: 12px; page-break-inside: avoid; }
+  .panel.accent { background: #14120b; border-color: rgba(251,191,36,0.21); }
+  .section-header { font-size: 10px; color: #666; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; display: flex; align-items: center; gap: 8px; }
+  .panel.accent .section-header { color: #fbbf24; border-bottom-color: rgba(251,191,36,0.19); }
+  .section-num { color: #444; font-weight: 700; }
+  .panel.accent .section-num { color: #fbbf24; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .grid-input { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .field { display: flex; flex-direction: column; gap: 2px; }
+  .field-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }
+  .field-input-wrap { display: flex; align-items: center; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 4px; overflow: hidden; }
+  .field-prefix, .field-suffix { padding: 5px 7px; color: #555; font-size: 11px; }
+  .field-prefix { border-right: 1px solid #2a2a2a; }
+  .field-suffix { border-left: 1px solid #2a2a2a; }
+  .field-input { flex: 1; background: transparent; border: none; outline: none; color: #e8e8e8; padding: 5px 7px; font-size: 12px; font-family: 'Courier New', monospace; min-width: 0; width: 100%; }
+  .field-input.small { padding: 4px 6px; font-size: 11px; }
+  input::-webkit-inner-spin-button { opacity: 0.3; }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #1a1a1a; }
+  .row.small { padding: 3px 0; }
+  .row-label { color: #aaa; font-size: 12px; }
+  .row.small .row-label { color: #666; font-size: 11px; }
+  .row-value { font-family: 'Courier New', monospace; font-size: 12px; color: #e8e8e8; }
+  .row.small .row-value { font-size: 11px; }
+  .row-value.accent { color: #fbbf24; font-weight: 600; }
+  .row-value.good { color: #4ade80; font-weight: 600; }
+  .row-value.bad { color: #f87171; font-weight: 600; }
+  .row-value.dim { color: #555; }
+  button { font-family: inherit; }
+  .vehicle-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; align-items: center; }
+  .tab { position: relative; }
+  .tab-btn { background: transparent; border: 1px solid #222; border-radius: 6px; padding: 7px 28px 7px 10px; cursor: pointer; text-align: left; color: #666; min-width: 130px; transition: all 0.15s; }
+  .tab-btn.active { background: #1a1a10; border-color: #fbbf24; color: #fff; }
+  .tab-name { font-size: 11px; font-weight: 600; }
+  .tab-type { font-size: 9px; color: #333; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+  .tab-btn.active .tab-type { color: #777; }
+  .tab-close { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; background: transparent; border: none; color: #555; cursor: pointer; font-size: 14px; line-height: 1; padding: 0; border-radius: 3px; }
+  .add-btn { background: transparent; border: 1px dashed #333; border-radius: 6px; padding: 7px 12px; cursor: pointer; color: #666; font-size: 11px; font-weight: 500; }
+  .vehicle-meta { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+  .text-input { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 4px; color: #e8e8e8; padding: 6px 10px; font-size: 12px; outline: none; font-family: inherit; }
+  select.text-input { font-family: inherit; }
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .toggle-label { font-size: 11px; color: #aaa; }
+  .toggle-btn { width: 36px; height: 18px; border-radius: 10px; background: #333; border: none; cursor: pointer; position: relative; }
+  .toggle-btn.on { background: #fbbf24; }
+  .toggle-knob { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #0d0d0d; transition: left 0.15s; }
+  .toggle-btn.on .toggle-knob { left: 20px; }
+  .slider-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .slider-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }
+  .slider-value { font-family: 'Courier New', monospace; font-size: 12px; color: #fbbf24; }
+  input[type="range"] { width: 100%; accent-color: #fbbf24; }
+  .help-text { font-size: 10px; color: #555; margin-top: 4px; }
+  .summary-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .summary-card { padding: 10px; background: #0f0f0f; border-radius: 4px; }
+  .summary-label { font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+  .summary-value { font-family: 'Courier New', monospace; font-size: 15px; }
+  .pricing-table { display: grid; grid-template-columns: 1fr 0.8fr 0.8fr 0.9fr 0.9fr 0.9fr 1fr 1.1fr; gap: 6px; align-items: center; }
+  .pricing-header { font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; padding-bottom: 6px; border-bottom: 1px solid #1a1a1a; margin-bottom: 8px; }
+  .pricing-row { padding: 6px 0; border-bottom: 1px solid #1a1a1a; }
+  .competitor-table { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 6px; align-items: center; }
+  .bar-row { display: grid; grid-template-columns: 120px 1fr 60px; gap: 10px; align-items: center; margin-bottom: 5px; }
+  .bar-bg { height: 18px; background: #0f0f0f; border-radius: 3px; position: relative; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 0.2s; }
+  .reco-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .reco-card { padding: 10px; background: #0f0f0f; border-radius: 6px; }
+  .reco-card.red { border: 1px solid rgba(248,113,113,0.19); }
+  .reco-card.yellow { border: 1px solid rgba(251,191,36,0.21); }
+  .reco-card.green { border: 1px solid rgba(74,222,128,0.19); }
+  .reco-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+  .reco-value { font-family: 'Courier New', monospace; font-size: 18px; font-weight: 600; }
+  .reco-help { font-size: 10px; color: #555; margin-top: 2px; }
+  .strategy-box { font-size: 11px; color: #aaa; line-height: 1.6; padding: 10px 12px; background: #0a0a0a; border-radius: 4px; border: 1px solid #1a1a1a; }
+  .strategy-title { color: #fbbf24; margin-bottom: 6px; font-weight: 600; }
+  .pdf-btn { background: #fbbf24; border: none; border-radius: 4px; padding: 8px 14px; color: #0a0a0a; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .diagnostic-row { margin-bottom: 10px; }
+  .diagnostic-bar-row { display: grid; grid-template-columns: 140px 1fr 80px 50px; gap: 10px; align-items: center; margin-bottom: 3px; }
+  .diagnostic-tip { font-size: 11px; color: #888; padding: 6px 10px; background: #14120b; border-radius: 3px; border: 1px solid rgba(251,191,36,0.13); line-height: 1.5; }
+  .fleet-summary-grid { display: grid; grid-template-columns: 2fr 0.6fr 1fr 1fr 1fr 1fr; gap: 6px; }
+  .fleet-totals { padding: 10px 12px; background: #14120b; border: 1px solid rgba(251,191,36,0.21); border-radius: 4px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .fleet-total-label { font-size: 10px; color: #fbbf24; text-transform: uppercase; letter-spacing: 0.08em; }
+  .fleet-total-value { font-family: 'Courier New', monospace; font-size: 16px; color: #fff; font-weight: 600; }
+  .market-stats { padding: 8px 10px; background: #0f0f0f; border-radius: 4px; font-size: 11px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 10px; margin-bottom: 14px; }
+  .util-bad { color: #f87171; }
+  .util-mid { color: #fbbf24; }
+  .util-good { color: #4ade80; }
+
+  @media print {
+    body, html { background: white !important; color: black !important; }
+    .no-print { display: none !important; }
+    .panel, .panel.accent { background: white !important; border: 1px solid #ccc !important; }
+    .panel.accent { background: #fffef0 !important; border-color: #d4a017 !important; }
+    * { color: black !important; }
+    input, select { color: black !important; background: white !important; border: 1px solid #ccc !important; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div>
+      <div class="subtitle">Basic Rentals · Pricing Engine</div>
+      <h1>Vehicle Breakeven & Pricing Calculator</h1>
+    </div>
+    <div class="no-print">
+      <button class="pdf-btn" onclick="window.print()">⎙ Export PDF</button>
+    </div>
+  </div>
+
+  <div id="vehicle-tabs" class="vehicle-tabs no-print"></div>
+
+  <div class="vehicle-meta">
+    <input type="text" id="vehicle-label" class="text-input" placeholder="Vehicle name" />
+    <select id="vehicle-type" class="text-input">
+      <option value="van">Van</option>
+      <option value="truck">Truck</option>
+    </select>
+    <div class="field">
+      <div class="field-input-wrap">
+        <input type="number" id="vehicle-qty" class="field-input" step="1" />
+        <span class="field-suffix">in fleet</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="panel">
+      <div class="section-header"><span>Vehicle & Fixed Costs</span></div>
+      <div class="grid-input">
+        <div class="field"><label class="field-label">Purchase Price</label><div class="field-input-wrap"><span class="field-prefix">$</span><input type="number" data-vfield="purchase" class="field-input" step="1000"/></div></div>
+        <div class="field"><label class="field-label">Depreciation</label><div class="field-input-wrap"><input type="number" data-vfield="depYears" class="field-input" step="1"/><span class="field-suffix">yrs</span></div></div>
+        <div class="field"><label class="field-label">Insurance / yr</label><div class="field-input-wrap"><span class="field-prefix">$</span><input type="number" data-vfield="insurance" class="field-input" step="100"/></div></div>
+        <div class="field"><label class="field-label">WOF / yr</label><div class="field-input-wrap"><span class="field-prefix">$</span><input type="number" data-vfield="wof" class="field-input" step="10"/></div></div>
+        <div class="field"><label class="field-label">Rego / yr</label><div class="field-input-wrap"><span class="field-prefix">$</span><input type="number" data-vfield="rego" class="field-input" step="10"/></div></div>
+        <div class="field"><label class="field-label">GPS / mth</label><div class="field-input-wrap"><span class="field-prefix">$</span><input type="number" data-vfield="gps_monthly" class="field-input" step="5"/></div></div>
+        <div class="field"><label class="field-label">Financing / day</label><div class="field-input-wrap"><span class="field-prefix">$</span><input type="number" data-vfield="financing" class="field-input" step="1"/></div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="section-header"><span>Variable / Per-KM Costs</span></div>
+      <div class="grid-input">
+        <div class="field"><label class="field-label">Tyre Set</label><div class="field-input-wrap"><span class="field-prefix">$</span><input type="number" data-vfield="tyre_cost" class="field-input" step="100"/></div></div>
+        <div class="field"><label class="field-label">Tyre Life</label><div class="field-input-wrap"><input type="number" data-vfield="tyre_life" class="field-input" step="5000"/><span class="field-suffix">km</span></div></div>
+        <div class="field"><label class="field-label">Alignment Cost</label><div class="field-input-wrap"><span class="field-prefix">$</span><input type="number" data-vfield="alignment_cost" class="field-input" step="10"/></div></div>
+        <div class="field"><label class="field-label">Every X km</label><div class="field-input-wrap"><input type="number" data-vfield="alignment_interval_km" class="field-input" step="5000"/><span class="field-suffix">km</span></div></div>
+        <div class="field"><label class="field-label">Sched. Maint</label><div class="field-input-wrap"><span class="field-prefix">$</span><input type="number" data-vfield="maintenance_per_km" class="field-input" step="0.01"/><span class="field-suffix">/km</span></div></div>
+        <div class="field"><label class="field-label">Unexpected</label><div class="field-input-wrap"><span class="field-prefix">$</span><input type="number" data-vfield="unexpected_per_km" class="field-input" step="0.01"/><span class="field-suffix">/km</span></div></div>
+        <div class="field" id="ruc-field" style="display:none"><label class="field-label">RUC</label><div class="field-input-wrap"><span class="field-prefix">$</span><input type="number" data-vfield="ruc_per_km" class="field-input" step="0.005"/><span class="field-suffix">/km</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="section-header"><span>Optional Adjustments</span></div>
+    <div class="grid-3">
+      <div>
+        <div class="toggle-row"><span class="toggle-label">Overhead allocation</span><button class="toggle-btn" id="overhead-toggle"><div class="toggle-knob"></div></button></div>
+        <div id="overhead-input" style="display:none"><div class="field"><label class="field-label">Overhead / vehicle / mth</label><div class="field-input-wrap"><span class="field-prefix">$</span><input type="number" id="overhead-amount" class="field-input" step="25"/></div></div></div>
+      </div>
+      <div>
+        <div class="toggle-row"><span class="toggle-label">Utilisation rate</span><button class="toggle-btn" id="utilisation-toggle"><div class="toggle-knob"></div></button></div>
+        <div id="utilisation-input" style="display:none">
+          <div class="slider-row"><span class="slider-label">Hired days</span><span class="slider-value" id="utilisation-display">75%</span></div>
+          <input type="range" id="utilisation-slider" min="30" max="100" value="75"/>
+        </div>
+      </div>
+      <div>
+        <div class="slider-row"><span style="font-size:11px;color:#aaa">Target margin</span><span class="slider-value" id="margin-display">35%</span></div>
+        <input type="range" id="margin-slider" min="10" max="70" value="35"/>
+        <div class="help-text">Used to suggest daily rate</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="margin-top:12px">
+    <div class="panel accent">
+      <div class="section-header"><span class="section-num">A</span><span>Daily Breakeven</span></div>
+      <div id="breakeven-rows"></div>
+    </div>
+    <div class="panel accent">
+      <div class="section-header"><span class="section-num">B</span><span>Per-KM Cost</span></div>
+      <div id="perkm-rows"></div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:12px">
+    <div class="section-header"><span>Cost Diagnostic — What's Driving Your Breakeven?</span></div>
+    <div style="font-size:11px;color:#aaa;margin-bottom:10px">Top 3 drivers make up <span id="top3-pct" style="color:#fbbf24;font-weight:600">0%</span> of annual costs.</div>
+    <div id="diagnostic-rows"></div>
+  </div>
+
+  <div class="panel" style="margin-top:12px">
+    <div class="section-header"><span>Sensitivity — What If Costs Rise?</span></div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+      <span style="font-size:11px;color:#aaa">Increase variable costs & insurance by</span>
+      <input type="range" id="sensitivity-slider" min="0" max="40" value="10" style="flex:1;accent-color:#f87171"/>
+      <span id="sensitivity-display" style="font-family:'Courier New',monospace;font-size:13px;color:#f87171;font-weight:600;min-width:40px">+10%</span>
+    </div>
+    <div class="summary-cards">
+      <div class="summary-card"><div class="summary-label">Current breakeven</div><div class="summary-value" style="color:#fbbf24" id="sens-current">$0</div></div>
+      <div class="summary-card"><div class="summary-label">Stressed breakeven</div><div class="summary-value" style="color:#f87171" id="sens-stressed">$0</div></div>
+      <div class="summary-card"><div class="summary-label">Difference</div><div class="summary-value" id="sens-diff">$0</div></div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:12px">
+    <div class="section-header"><span class="section-num">C</span><span>Your Pricing Tiers</span></div>
+    <div style="overflow-x:auto"><div style="min-width:720px">
+      <div class="pricing-table pricing-header">
+        <div>Tier</div><div>Discount</div><div>Free km</div><div>Calc. rate</div><div>Override</div><div>Breakeven</div><div>Profit / margin</div><div>BE util. / ROI</div>
+      </div>
+      <div id="tier-rows"></div>
+    </div></div>
+    <div style="font-size:10px;color:#555;margin-top:8px;line-height:1.5"><strong style="color:#888">BE util. %</strong> = min % of days vehicle must be hired to cover fixed costs. <strong style="color:#888">ROI</strong> = years to pay back purchase price.</div>
+  </div>
+
+  <div class="panel" style="margin-top:12px">
+    <div class="section-header"><span class="section-num">D</span><span>Competitors & Market Position</span></div>
+    <div class="competitor-table pricing-header">
+      <div>Competitor</div><div>Daily</div><div>Weekly</div><div>Monthly</div>
+    </div>
+    <div id="competitor-rows"></div>
+    <div class="market-stats">
+      <div><span style="color:#555">Low: </span><span id="market-low" style="color:#4ade80;font-family:'Courier New',monospace">$0</span></div>
+      <div><span style="color:#555">Avg: </span><span id="market-avg" style="color:#fbbf24;font-family:'Courier New',monospace">$0</span></div>
+      <div><span style="color:#555">High: </span><span id="market-high" style="color:#f87171;font-family:'Courier New',monospace">$0</span></div>
+    </div>
+    <div style="font-size:10px;color:#666;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;padding-top:8px;border-top:1px solid #1a1a1a">Daily rate comparison</div>
+    <div id="bar-chart"></div>
+  </div>
+
+  <div class="panel" style="margin-top:12px">
+    <div class="section-header"><span class="section-num">E</span><span>Fleet Summary</span></div>
+    <div style="font-size:10px;color:#666;margin-bottom:10px">Set quantities at the top of each vehicle tab.</div>
+    <div class="fleet-summary-grid pricing-header">
+      <div>Vehicle</div><div>Qty</div><div>Breakeven/day</div><div>Rate/day</div><div>Annual rev</div><div>Annual profit</div>
+    </div>
+    <div id="fleet-rows"></div>
+    <div class="fleet-totals">
+      <div><div class="fleet-total-label">Total fleet</div><div class="fleet-total-value" id="fleet-total-qty">0 vehicles</div></div>
+      <div><div class="fleet-total-label">Annual revenue</div><div class="fleet-total-value" id="fleet-total-rev">$0</div></div>
+      <div><div class="fleet-total-label">Annual profit</div><div class="fleet-total-value" id="fleet-total-profit">$0</div></div>
+    </div>
+  </div>
+
+  <div class="panel accent" style="margin-top:12px">
+    <div class="section-header"><span class="section-num">F</span><span>Pricing Recommendations</span></div>
+    <div class="reco-cards">
+      <div class="reco-card red">
+        <div class="reco-label" style="color:#f87171">Floor (breakeven)</div>
+        <div class="reco-value" style="color:#f87171" id="reco-floor">$0</div>
+        <div class="reco-help">Never below this</div>
+      </div>
+      <div class="reco-card yellow">
+        <div class="reco-label" style="color:#fbbf24" id="reco-target-label">35% margin</div>
+        <div class="reco-value" style="color:#fbbf24" id="reco-target">$0</div>
+        <div class="reco-help">Target price</div>
+      </div>
+      <div class="reco-card green">
+        <div class="reco-label" style="color:#4ade80">Market ceiling</div>
+        <div class="reco-value" style="color:#4ade80" id="reco-ceiling">$0</div>
+        <div class="reco-help">Max competitor</div>
+      </div>
+    </div>
+    <div class="strategy-box">
+      <div class="strategy-title">Strategy notes</div>
+      <div id="strategy-warnings"></div>
+      <div>• Short-term (daily): price near market average</div>
+      <div>• Long-term (monthly / 3mo+): price below market avg to lock in utilisation</div>
+      <div>• Never discount below breakeven</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== State =====
+const DEFAULT_VEHICLES = {
+  small_van: { label: "Small Van", type: "van", purchase: 25000, depYears: 5, insurance: 2500, wof: 120, rego: 150, financing: 0, gps_monthly: 25, tyre_cost: 800, tyre_life: 40000, maintenance_per_km: 0.05, unexpected_per_km: 0.03, alignment_cost: 120, alignment_interval_km: 20000, ruc_per_km: 0 },
+  large_van: { label: "Large Van", type: "van", purchase: 45000, depYears: 5, insurance: 3500, wof: 120, rego: 150, financing: 0, gps_monthly: 25, tyre_cost: 1200, tyre_life: 40000, maintenance_per_km: 0.06, unexpected_per_km: 0.04, alignment_cost: 150, alignment_interval_km: 20000, ruc_per_km: 0 },
+  light_truck: { label: "Light Truck", type: "truck", purchase: 65000, depYears: 7, insurance: 5000, wof: 200, rego: 400, financing: 0, gps_monthly: 30, tyre_cost: 2000, tyre_life: 60000, maintenance_per_km: 0.08, unexpected_per_km: 0.05, alignment_cost: 200, alignment_interval_km: 25000, ruc_per_km: 0.076 },
+  heavy_truck: { label: "Heavy Truck", type: "truck", purchase: 120000, depYears: 7, insurance: 8000, wof: 300, rego: 600, financing: 0, gps_monthly: 30, tyre_cost: 4000, tyre_life: 60000, maintenance_per_km: 0.12, unexpected_per_km: 0.07, alignment_cost: 250, alignment_interval_km: 25000, ruc_per_km: 0.076 },
+};
+
+const DEFAULT_TIERS = {
+  daily:    { label: "Daily",     discount: 0,  freeKm: 50,  override: null },
+  weekly:   { label: "Weekly",    discount: 15, freeKm: 100, override: null },
+  monthly:  { label: "Monthly",   discount: 30, freeKm: 100, override: null },
+  longterm: { label: "3-month+",  discount: 45, freeKm: 150, override: null },
+};
+
+const DEFAULT_COMPETITORS = [
+  { name: "Competitor 1", daily: 95, weekly: 550, monthly: 1800 },
+  { name: "Competitor 2", daily: 110, weekly: 620, monthly: 2100 },
+  { name: "Competitor 3", daily: 130, weekly: 700, monthly: 2400 },
+  { name: "Competitor 4", daily: 85, weekly: 500, monthly: 1700 },
+  { name: "Competitor 5", daily: 120, weekly: 680, monthly: 2300 },
+];
+
+const state = {
+  vehicles: JSON.parse(JSON.stringify(DEFAULT_VEHICLES)),
+  vehicleKey: "small_van",
+  overhead: { enabled: false, perVehicleMonthly: 200 },
+  utilisation: { enabled: false, rate: 75 },
+  targetMargin: 35,
+  fleetQty: {},
+  sensitivityPct: 10,
+  tiers: JSON.parse(JSON.stringify(DEFAULT_TIERS)),
+  competitors: JSON.parse(JSON.stringify(DEFAULT_COMPETITORS)),
+};
+
+// ===== Helpers =====
+const fmt = (n) => "$" + n.toFixed(2);
+const fmtKm = (n) => "$" + n.toFixed(3) + "/km";
+const fmt0 = (n) => "$" + Math.round(n).toLocaleString();
+const fmtK = (n) => n >= 1000 ? "$" + (n/1000).toFixed(1) + "k" : "$" + Math.round(n);
+
+function calcCosts(v) {
+  const depDaily = v.purchase / (v.depYears * 365);
+  const insDaily = v.insurance / 365;
+  const wofDaily = v.wof / 365;
+  const regoDaily = v.rego / 365;
+  const finDaily = v.financing;
+  const gpsDaily = (v.gps_monthly * 12) / 365;
+  let fixedDaily = depDaily + insDaily + wofDaily + regoDaily + finDaily + gpsDaily;
+  const overheadDaily = state.overhead.enabled ? state.overhead.perVehicleMonthly / 30.42 : 0;
+  fixedDaily += overheadDaily;
+  const utilRate = state.utilisation.enabled ? state.utilisation.rate / 100 : 1;
+  const adjFixedDaily = utilRate > 0 ? fixedDaily / utilRate : fixedDaily;
+  const tyrePerKm = v.tyre_cost / v.tyre_life;
+  const alignmentPerKm = v.alignment_cost / v.alignment_interval_km;
+  const varPerKm = tyrePerKm + alignmentPerKm + v.maintenance_per_km + v.unexpected_per_km + v.ruc_per_km;
+  return { depDaily, insDaily, wofDaily, regoDaily, finDaily, gpsDaily, overheadDaily, fixedDaily, adjFixedDaily, tyrePerKm, alignmentPerKm, varPerKm };
+}
+
+function tierCalc(tier, v, c) {
+  const freeKmCost = c.varPerKm * tier.freeKm;
+  const breakeven = c.adjFixedDaily + freeKmCost;
+  const baseDaily = (state.tiers.daily.override !== null && state.tiers.daily.override !== 0) ? state.tiers.daily.override : breakeven * (1 + state.targetMargin / 100);
+  const calculatedRate = baseDaily * (1 - tier.discount / 100);
+  const effectiveRate = (tier.override !== null && tier.override !== 0) ? tier.override : calculatedRate;
+  const profit = effectiveRate - breakeven;
+  const margin = effectiveRate > 0 ? (profit / effectiveRate) * 100 : 0;
+  const breakevenUtil = effectiveRate > 0 ? (c.fixedDaily / (effectiveRate - c.varPerKm * tier.freeKm)) * 100 : 100;
+  const utilRate = state.utilisation.enabled ? state.utilisation.rate / 100 : 1;
+  const annualRevenue = effectiveRate * 365 * utilRate;
+  const annualProfit = profit * 365 * utilRate;
+  const roiYears = v.purchase > 0 && annualProfit > 0 ? v.purchase / annualProfit : Infinity;
+  return { freeKmCost, breakeven, calculatedRate, effectiveRate, profit, margin, breakevenUtil, annualRevenue, annualProfit, roiYears };
+}
+
+// ===== Render =====
+function render() {
+  const v = state.vehicles[state.vehicleKey];
+  if (!v) return;
+  const c = calcCosts(v);
+
+  // Vehicle tabs
+  const tabsEl = document.getElementById("vehicle-tabs");
+  tabsEl.innerHTML = "";
+  Object.entries(state.vehicles).forEach(([key, veh]) => {
+    const wrap = document.createElement("div");
+    wrap.className = "tab";
+    const btn = document.createElement("button");
+    btn.className = "tab-btn" + (state.vehicleKey === key ? " active" : "");
+    btn.innerHTML = '<div class="tab-name">' + escapeHtml(veh.label) + '</div><div class="tab-type">' + (veh.type === "truck" ? "Truck + RUC" : "Van") + '</div>';
+    btn.onclick = () => { state.vehicleKey = key; render(); };
+    wrap.appendChild(btn);
+    if (Object.keys(state.vehicles).length > 1) {
+      const close = document.createElement("button");
+      close.className = "tab-close";
+      close.textContent = "×";
+      close.onclick = (e) => { e.stopPropagation(); removeVehicle(key); };
+      wrap.appendChild(close);
+    }
+    tabsEl.appendChild(wrap);
+  });
+  const addBtn = document.createElement("button");
+  addBtn.className = "add-btn";
+  addBtn.textContent = "+ Add Vehicle";
+  addBtn.onclick = addVehicle;
+  tabsEl.appendChild(addBtn);
+
+  // Vehicle meta
+  document.getElementById("vehicle-label").value = v.label;
+  document.getElementById("vehicle-type").value = v.type;
+  document.getElementById("vehicle-qty").value = state.fleetQty[state.vehicleKey] || 1;
+
+  // Fixed/variable cost inputs
+  document.querySelectorAll("[data-vfield]").forEach(el => {
+    const f = el.getAttribute("data-vfield");
+    if (v[f] !== undefined) el.value = v[f];
+  });
+  document.getElementById("ruc-field").style.display = v.type === "truck" ? "" : "none";
+
+  // Optional adjustments
+  setToggle("overhead-toggle", state.overhead.enabled);
+  document.getElementById("overhead-input").style.display = state.overhead.enabled ? "" : "none";
+  document.getElementById("overhead-amount").value = state.overhead.perVehicleMonthly;
+  setToggle("utilisation-toggle", state.utilisation.enabled);
+  document.getElementById("utilisation-input").style.display = state.utilisation.enabled ? "" : "none";
+  document.getElementById("utilisation-slider").value = state.utilisation.rate;
+  document.getElementById("utilisation-display").textContent = state.utilisation.rate + "%";
+  document.getElementById("margin-slider").value = state.targetMargin;
+  document.getElementById("margin-display").textContent = state.targetMargin + "%";
+
+  // Breakeven (A)
+  const beRows = [
+    ["Depreciation", fmt(c.depDaily), "small"],
+    ["Insurance", fmt(c.insDaily), "small"],
+    ["WOF", fmt(c.wofDaily), "small"],
+    ["Rego", fmt(c.regoDaily), "small"],
+    ["GPS", fmt(c.gpsDaily), "small"],
+  ];
+  if (v.financing > 0) beRows.push(["Financing", fmt(c.finDaily), "small"]);
+  if (state.overhead.enabled) beRows.push(["Overhead", fmt(c.overheadDaily), "small"]);
+  document.getElementById("breakeven-rows").innerHTML =
+    beRows.map(r => rowHtml(r[0], r[1], r[2])).join("") +
+    '<div style="margin-top:6px">' +
+    rowHtml("Fixed / day", fmt(c.fixedDaily), "small dim") +
+    rowHtml(state.utilisation.enabled ? "Adj. (" + state.utilisation.rate + "% util.)" : "Daily breakeven (fixed)", fmt(c.adjFixedDaily), "accent") +
+    '</div>';
+
+  // Per-KM (B)
+  const pkmRows = [
+    ["Tyres", fmtKm(c.tyrePerKm), "small"],
+    ["Alignment", fmtKm(c.alignmentPerKm), "small"],
+    ["Scheduled Maint.", fmtKm(v.maintenance_per_km), "small"],
+    ["Unexpected Maint.", fmtKm(v.unexpected_per_km), "small"],
+  ];
+  if (v.ruc_per_km > 0) pkmRows.push(["RUC", fmtKm(v.ruc_per_km), "small"]);
+  document.getElementById("perkm-rows").innerHTML =
+    pkmRows.map(r => rowHtml(r[0], r[1], r[2])).join("") +
+    '<div style="margin-top:6px">' + rowHtml("Cost per km", fmtKm(c.varPerKm), "accent") + '</div>';
+
+  // Diagnostic
+  const components = [
+    { name: "Depreciation", yearly: c.depDaily * 365, tip: "Purchase price " + fmt0(v.purchase) + " over " + v.depYears + " years. Longer depreciation lowers daily cost, but only if vehicle truly lasts." },
+    { name: "Insurance", yearly: v.insurance, tip: "Shop insurance annually. Fleet policies, higher excess, or bundling across Sterling vehicles often reduces premiums 15-30%." },
+    { name: "Scheduled Maintenance", yearly: v.maintenance_per_km * 365 * 80, tip: "In-house servicing at Sterling Clutch & Brake could significantly reduce this vs outsourced." },
+    { name: "Unexpected Maintenance", yearly: v.unexpected_per_km * 365 * 80, tip: "High reserve suggests aging fleet. Track actual unplanned repairs for 3 months to right-size." },
+    { name: "Tyres", yearly: (v.tyre_cost / v.tyre_life) * 365 * 80, tip: "Bulk purchasing or fleet tyre contracts reduce cost per set." },
+    { name: "GPS Tracker", yearly: v.gps_monthly * 12, tip: "Most GPS providers offer fleet discounts above 20 vehicles." },
+    { name: "Financing", yearly: v.financing * 365, tip: "Refinancing at lower rates reduces this." },
+  ];
+  if (state.overhead.enabled) components.push({ name: "Overhead", yearly: state.overhead.perVehicleMonthly * 12, tip: "Includes yard, admin, staff allocation. Scaling fleet reduces per-vehicle overhead." });
+  if (v.ruc_per_km > 0) components.push({ name: "RUC", yearly: v.ruc_per_km * 365 * 80, tip: "Fixed by govt. EV trucks exempt until 2027." });
+  const filtered = components.filter(x => x.yearly > 0).sort((a, b) => b.yearly - a.yearly);
+  const totalCost = filtered.reduce((s, x) => s + x.yearly, 0);
+  const top3 = totalCost > 0 ? (filtered.slice(0, 3).reduce((s, x) => s + x.yearly, 0) / totalCost) * 100 : 0;
+  document.getElementById("top3-pct").textContent = top3.toFixed(0) + "%";
+  document.getElementById("diagnostic-rows").innerHTML = filtered.slice(0, 6).map((comp, i) => {
+    const pct = totalCost > 0 ? (comp.yearly / totalCost) * 100 : 0;
+    const isBig = i === 0;
+    let html = '<div class="diagnostic-row">';
+    html += '<div class="diagnostic-bar-row">';
+    html += '<div style="font-size:12px;color:' + (isBig ? "#fbbf24" : "#ccc") + ';font-weight:' + (isBig ? 600 : 400) + '">' + (isBig ? "▲ " : "") + escapeHtml(comp.name) + '</div>';
+    html += '<div style="height:14px;background:#0f0f0f;border-radius:2px;position:relative"><div style="height:100%;width:' + pct + '%;background:' + (isBig ? "#fbbf24" : "#555") + ';border-radius:2px"></div></div>';
+    html += '<div style="font-family:Courier New,monospace;font-size:11px;color:#aaa;text-align:right">' + fmtK(comp.yearly) + '/yr</div>';
+    html += '<div style="font-family:Courier New,monospace;font-size:11px;color:#666;text-align:right">' + pct.toFixed(0) + '%</div>';
+    html += '</div>';
+    if (isBig) html += '<div class="diagnostic-tip">💡 ' + escapeHtml(comp.tip) + '</div>';
+    html += '</div>';
+    return html;
+  }).join("");
+
+  // Sensitivity
+  document.getElementById("sensitivity-slider").value = state.sensitivityPct;
+  document.getElementById("sensitivity-display").textContent = "+" + state.sensitivityPct + "%";
+  const stressedV = Object.assign({}, v, {
+    insurance: v.insurance * (1 + state.sensitivityPct / 100),
+    maintenance_per_km: v.maintenance_per_km * (1 + state.sensitivityPct / 100),
+    unexpected_per_km: v.unexpected_per_km * (1 + state.sensitivityPct / 100),
+    tyre_cost: v.tyre_cost * (1 + state.sensitivityPct / 100),
+    ruc_per_km: v.ruc_per_km * (1 + state.sensitivityPct / 100),
+  });
+  const stressedC = calcCosts(stressedV);
+  const dailyBreakeven = tierCalc(state.tiers.daily, v, c).breakeven;
+  const stressedBreakeven = stressedC.adjFixedDaily + stressedC.varPerKm * state.tiers.daily.freeKm;
+  document.getElementById("sens-current").textContent = fmt0(dailyBreakeven);
+  document.getElementById("sens-stressed").textContent = fmt0(stressedBreakeven);
+  document.getElementById("sens-diff").textContent = "+" + fmt0(stressedBreakeven - dailyBreakeven) + "/day";
+
+  // Pricing tiers
+  document.getElementById("tier-rows").innerHTML = Object.entries(state.tiers).map(([key, tier]) => {
+    const calc = tierCalc(tier, v, c);
+    const utilColor = calc.breakevenUtil <= 70 ? "#4ade80" : calc.breakevenUtil <= 90 ? "#fbbf24" : "#f87171";
+    let html = '<div class="pricing-table pricing-row">';
+    html += '<div style="font-size:12px;color:#e8e8e8;font-weight:500">' + tier.label + '</div>';
+    if (key === "daily") {
+      html += '<div><span style="font-size:11px;color:#555;font-family:Courier New,monospace">base</span></div>';
+    } else {
+      html += '<div><div class="field-input-wrap"><input type="number" class="field-input small" data-tier="' + key + '" data-tfield="discount" value="' + tier.discount + '" step="1"/><span class="field-suffix">%</span></div></div>';
+    }
+    html += '<div><div class="field-input-wrap"><input type="number" class="field-input small" data-tier="' + key + '" data-tfield="freeKm" value="' + tier.freeKm + '" step="10"/><span class="field-suffix">km</span></div></div>';
+    html += '<div style="font-family:Courier New,monospace;font-size:11px;color:#888">' + fmt0(calc.calculatedRate) + '</div>';
+    html += '<div><div class="field-input-wrap"><span class="field-prefix">$</span><input type="number" class="field-input small" data-tier="' + key + '" data-tfield="override" value="' + (tier.override === null ? "" : tier.override) + '" step="5"/></div></div>';
+    html += '<div style="font-family:Courier New,monospace;font-size:11px;color:#fbbf24">' + fmt0(calc.breakeven) + '</div>';
+    html += '<div style="font-family:Courier New,monospace;font-size:11px;color:' + (calc.profit >= 0 ? "#4ade80" : "#f87171") + ';font-weight:600">' + (calc.profit >= 0 ? "+" : "") + fmt0(calc.profit) + '<span style="font-size:10px;color:#555;margin-left:4px">(' + calc.margin.toFixed(0) + '%)</span></div>';
+    html += '<div style="font-size:10px"><div style="font-family:Courier New,monospace;color:' + utilColor + '">' + (calc.breakevenUtil > 100 ? "∞" : calc.breakevenUtil.toFixed(0) + "%") + ' util.</div><div style="color:#666;font-family:Courier New,monospace">' + (calc.roiYears === Infinity || calc.roiYears > 50 ? "—" : calc.roiYears.toFixed(1) + "y ROI") + '</div></div>';
+    html += '</div>';
+    return html;
+  }).join("");
+
+  // Competitors
+  document.getElementById("competitor-rows").innerHTML = state.competitors.map((comp, i) => {
+    let html = '<div class="competitor-table" style="padding:4px 0">';
+    html += '<input type="text" class="text-input" data-comp="' + i + '" data-cfield="name" value="' + escapeHtml(comp.name) + '"/>';
+    html += '<div class="field-input-wrap"><span class="field-prefix">$</span><input type="number" class="field-input small" data-comp="' + i + '" data-cfield="daily" value="' + comp.daily + '" step="5"/></div>';
+    html += '<div class="field-input-wrap"><span class="field-prefix">$</span><input type="number" class="field-input small" data-comp="' + i + '" data-cfield="weekly" value="' + comp.weekly + '" step="10"/></div>';
+    html += '<div class="field-input-wrap"><span class="field-prefix">$</span><input type="number" class="field-input small" data-comp="' + i + '" data-cfield="monthly" value="' + comp.monthly + '" step="50"/></div>';
+    html += '</div>';
+    return html;
+  }).join("");
+
+  const avgComp = state.competitors.reduce((s, c) => s + (c.daily || 0), 0) / state.competitors.length;
+  const minComp = Math.min.apply(null, state.competitors.map(c => c.daily || Infinity));
+  const maxComp = Math.max.apply(null, state.competitors.map(c => c.daily || 0));
+  document.getElementById("market-low").textContent = fmt0(minComp);
+  document.getElementById("market-avg").textContent = fmt0(avgComp);
+  document.getElementById("market-high").textContent = fmt0(maxComp);
+
+  // Bar chart
+  const yourPrice = tierCalc(state.tiers.daily, v, c).effectiveRate;
+  const barMax = Math.max(maxComp, yourPrice, dailyBreakeven) * 1.15;
+  const items = [
+    { label: "Your breakeven", value: dailyBreakeven, color: "#f87171", type: "marker" },
+    { label: "Your price", value: yourPrice, color: "#fbbf24", type: "you" },
+  ].concat(state.competitors.map(c => ({ label: c.name, value: c.daily || 0, color: "#666", type: "comp" })));
+  items.sort((a, b) => a.value - b.value);
+  document.getElementById("bar-chart").innerHTML = items.map(item => {
+    const labelColor = item.type === "you" ? "#fbbf24" : item.type === "marker" ? "#f87171" : "#888";
+    const opacity = item.type === "comp" ? 0.4 : 1;
+    return '<div class="bar-row"><div style="font-size:11px;color:' + labelColor + ';font-weight:' + (item.type !== "comp" ? 600 : 400) + '">' + escapeHtml(item.label) + '</div><div class="bar-bg"><div class="bar-fill" style="width:' + ((item.value / barMax) * 100) + '%;background:' + item.color + ';opacity:' + opacity + '"></div></div><div style="font-family:Courier New,monospace;font-size:11px;color:' + item.color + ';text-align:right;font-weight:600">' + fmt0(item.value) + '</div></div>';
+  }).join("");
+
+  // Fleet summary
+  const fleetSummary = Object.entries(state.vehicles).map(([key, veh]) => {
+    const fc = calcCosts(veh);
+    const freeKm = state.tiers.daily.freeKm;
+    const q = state.fleetQty[key] || 0;
+    const breakeven = fc.adjFixedDaily + fc.varPerKm * freeKm;
+    const baseDaily = (key === state.vehicleKey && state.tiers.daily.override !== null && state.tiers.daily.override !== 0) ? state.tiers.daily.override : breakeven * (1 + state.targetMargin / 100);
+    const utilRate = state.utilisation.enabled ? state.utilisation.rate / 100 : 1;
+    const annualRev = baseDaily * 365 * utilRate * q;
+    const annualProfit = (baseDaily - breakeven) * 365 * utilRate * q;
+    return { key, label: veh.label, qty: q, breakeven, dailyRate: baseDaily, annualRev, annualProfit };
+  });
+  const totalRev = fleetSummary.reduce((s, f) => s + f.annualRev, 0);
+  const totalProfit = fleetSummary.reduce((s, f) => s + f.annualProfit, 0);
+  const totalQty = fleetSummary.reduce((s, f) => s + f.qty, 0);
+  document.getElementById("fleet-rows").innerHTML = fleetSummary.map(f => {
+    const opacity = f.qty === 0 ? 0.35 : 1;
+    return '<div class="fleet-summary-grid" style="align-items:center;padding:5px 0;border-bottom:1px solid #1a1a1a;opacity:' + opacity + '"><div style="font-size:12px">' + escapeHtml(f.label) + '</div><div style="font-family:Courier New,monospace;font-size:12px;color:#fbbf24">' + f.qty + '</div><div style="font-family:Courier New,monospace;font-size:11px;color:#aaa">' + fmt0(f.breakeven) + '</div><div style="font-family:Courier New,monospace;font-size:11px;color:#aaa">' + fmt0(f.dailyRate) + '</div><div style="font-family:Courier New,monospace;font-size:11px;color:#e8e8e8">' + fmtK(f.annualRev) + '</div><div style="font-family:Courier New,monospace;font-size:11px;color:' + (f.annualProfit >= 0 ? "#4ade80" : "#f87171") + ';font-weight:600">' + fmtK(f.annualProfit) + '</div></div>';
+  }).join("");
+  document.getElementById("fleet-total-qty").textContent = totalQty + " vehicles";
+  document.getElementById("fleet-total-rev").textContent = fmtK(totalRev);
+  document.getElementById("fleet-total-profit").textContent = fmtK(totalProfit);
+  document.getElementById("fleet-total-profit").style.color = totalProfit >= 0 ? "#4ade80" : "#f87171";
+
+  // Recommendations
+  document.getElementById("reco-floor").textContent = fmt0(dailyBreakeven);
+  document.getElementById("reco-target-label").textContent = state.targetMargin + "% margin";
+  document.getElementById("reco-target").textContent = fmt0(dailyBreakeven * (1 + state.targetMargin / 100));
+  document.getElementById("reco-ceiling").textContent = fmt0(maxComp);
+
+  let warnings = "";
+  if (dailyBreakeven > avgComp) warnings += '<div style="color:#f87171;margin-bottom:4px">⚠ Your breakeven (' + fmt0(dailyBreakeven) + ') is above market avg (' + fmt0(avgComp) + ').</div>';
+  if (dailyBreakeven < minComp) warnings += '<div style="color:#4ade80;margin-bottom:4px">✓ You can compete at the market floor and still profit.</div>';
+  if (stressedBreakeven > avgComp && dailyBreakeven < avgComp) warnings += '<div style="color:#fbbf24;margin-bottom:4px">⚠ A ' + state.sensitivityPct + '% cost increase pushes breakeven above market avg.</div>';
+  document.getElementById("strategy-warnings").innerHTML = warnings;
+}
+
+// ===== Helpers =====
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function rowHtml(label, value, classes) {
+  classes = classes || "";
+  const isSmall = classes.indexOf("small") >= 0;
+  const valClass = classes.replace("small", "").trim();
+  return '<div class="row' + (isSmall ? " small" : "") + '"><div><span class="row-label">' + escapeHtml(label) + '</span></div><span class="row-value ' + valClass + '">' + value + '</span></div>';
+}
+function setToggle(id, on) { const el = document.getElementById(id); if (on) el.classList.add("on"); else el.classList.remove("on"); }
+
+function addVehicle() {
+  const newKey = "custom_" + Date.now();
+  state.vehicles[newKey] = Object.assign({}, DEFAULT_VEHICLES.small_van, { label: "New Vehicle" });
+  state.vehicleKey = newKey;
+  render();
+}
+
+function removeVehicle(key) {
+  if (Object.keys(state.vehicles).length <= 1) return;
+  delete state.vehicles[key];
+  if (state.vehicleKey === key) state.vehicleKey = Object.keys(state.vehicles)[0];
+  render();
+}
+
+// ===== Wire up events =====
+document.addEventListener("input", (e) => {
+  const t = e.target;
+  const v = state.vehicles[state.vehicleKey];
+
+  if (t.id === "vehicle-label") { v.label = t.value; render(); return; }
+  if (t.id === "vehicle-qty") { state.fleetQty[state.vehicleKey] = parseFloat(t.value) || 0; render(); return; }
+  if (t.id === "overhead-amount") { state.overhead.perVehicleMonthly = parseFloat(t.value) || 0; render(); return; }
+  if (t.id === "utilisation-slider") { state.utilisation.rate = parseFloat(t.value); render(); return; }
+  if (t.id === "margin-slider") { state.targetMargin = parseFloat(t.value); render(); return; }
+  if (t.id === "sensitivity-slider") { state.sensitivityPct = parseFloat(t.value); render(); return; }
+
+  if (t.dataset.vfield) {
+    const field = t.dataset.vfield;
+    v[field] = parseFloat(t.value) || 0;
+    render();
+    return;
+  }
+  if (t.dataset.tier && t.dataset.tfield) {
+    const tier = state.tiers[t.dataset.tier];
+    const field = t.dataset.tfield;
+    if (field === "override") {
+      tier[field] = t.value === "" ? null : (parseFloat(t.value) || null);
+    } else {
+      tier[field] = parseFloat(t.value) || 0;
+    }
+    render();
+    return;
+  }
+  if (t.dataset.comp !== undefined && t.dataset.cfield) {
+    const i = parseInt(t.dataset.comp);
+    const field = t.dataset.cfield;
+    state.competitors[i][field] = field === "name" ? t.value : (parseFloat(t.value) || 0);
+    render();
+    return;
+  }
+});
+
+document.addEventListener("change", (e) => {
+  if (e.target.id === "vehicle-type") {
+    const v = state.vehicles[state.vehicleKey];
+    v.type = e.target.value;
+    if (v.type !== "truck") v.ruc_per_km = 0;
+    else if (!v.ruc_per_km) v.ruc_per_km = 0.076;
+    render();
+  }
+});
+
+document.getElementById("overhead-toggle").addEventListener("click", () => { state.overhead.enabled = !state.overhead.enabled; render(); });
+document.getElementById("utilisation-toggle").addEventListener("click", () => { state.utilisation.enabled = !state.utilisation.enabled; render(); });
+
+// ===== Init =====
+render();
+</script>
+</body>
+</html>
