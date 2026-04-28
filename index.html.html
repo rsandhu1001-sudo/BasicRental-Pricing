@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#0a0a0a" />
+<title>Basic Rentals · Pricing Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #0a0a0a; color: #e8e8e8; font-family: 'DM Sans', sans-serif; }
+  input::-webkit-inner-spin-button { opacity: 0.3; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #111; }
+  ::-webkit-scrollbar-thumb { background: #333; }
+
+  @media print {
+    body, html { background: white !important; color: black !important; }
+    .no-print { display: none !important; }
+    div[style*="background: rgb(10, 10, 10)"],
+    div[style*="background: #0a0a0a"] { background: white !important; color: black !important; padding: 0 !important; }
+    div[style*="background: rgb(17, 17, 17)"],
+    div[style*="background: #111"] { background: white !important; border: 1px solid #ccc !important; }
+    div[style*="background: rgb(20, 18, 11)"],
+    div[style*="background: #14120b"] { background: #fffef0 !important; border: 1px solid #d4a017 !important; }
+    * { color: black !important; border-color: #ccc !important; }
+    input, select { color: black !important; background: white !important; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="env,react">
+const { useState } = React;
+
+const DEFAULT_VEHICLES = {
+  small_van: {
+    label: "Small Van", type: "van",
+    purchase: 25000, depYears: 5, insurance: 2500, wof: 120, rego: 150,
+    financing: 0, gps_monthly: 25,
+    tyre_cost: 800, tyre_life: 40000,
+    maintenance_per_km: 0.05, unexpected_per_km: 0.03,
+    alignment_cost: 120, alignment_interval_km: 20000,
+    ruc_per_km: 0,
+  },
+  large_van: {
+    label: "Large Van", type: "van",
+    purchase: 45000, depYears: 5, insurance: 3500, wof: 120, rego: 150,
+    financing: 0, gps_monthly: 25,
+    tyre_cost: 1200, tyre_life: 40000,
+    maintenance_per_km: 0.06, unexpected_per_km: 0.04,
+    alignment_cost: 150, alignment_interval_km: 20000,
+    ruc_per_km: 0,
+  },
+  light_truck: {
+    label: "Light Truck", type: "truck",
+    purchase: 65000, depYears: 7, insurance: 5000, wof: 200, rego: 400,
+    financing: 0, gps_monthly: 30,
+    tyre_cost: 2000, tyre_life: 60000,
+    maintenance_per_km: 0.08, unexpected_per_km: 0.05,
+    alignment_cost: 200, alignment_interval_km: 25000,
+    ruc_per_km: 0.076,
+  },
+  heavy_truck: {
+    label: "Heavy Truck", type: "truck",
+    purchase: 120000, depYears: 7, insurance: 8000, wof: 300, rego: 600,
+    financing: 0, gps_monthly: 30,
+    tyre_cost: 4000, tyre_life: 60000,
+    maintenance_per_km: 0.12, unexpected_per_km: 0.07,
+    alignment_cost: 250, alignment_interval_km: 25000,
+    ruc_per_km: 0.076,
+  },
+};
+
+const DEFAULT_TIERS = {
+  daily:    { label: "Daily",     discount: 0,  freeKm: 50,  override: null },
+  weekly:   { label: "Weekly",    discount: 15, freeKm: 100, override: null },
+  monthly:  { label: "Monthly",   discount: 30, freeKm: 100, override: null },
+  longterm: { label: "3-month+",  discount: 45, freeKm: 150, override: null },
+};
+
+const DEFAULT_COMPETITORS = [
+  { name: "Competitor 1", daily: 95, weekly: 550, monthly: 1800 },
+  { name: "Competitor 2", daily: 110, weekly: 620, monthly: 2100 },
+  { name: "Competitor 3", daily: 130, weekly: 700, monthly: 2400 },
+  { name: "Competitor 4", daily: 85, weekly: 500, monthly: 1700 },
+  { name: "Competitor 5", daily: 120, weekly: 680, monthly: 2300 },
+];
+
+function calcCosts(v, overhead, utilisation) {
+  const depDaily = v.purchase / (v.depYears * 365);
+  const insDaily = v.insurance / 365;
+  const wofDaily = v.wof / 365;
+  const regoDaily = v.rego / 365;
+  const finDaily = v.financing;
+  const gpsDaily = (v.gps_monthly * 12) / 365;
+  let fixedDaily = depDaily + insDaily + wofDaily + regoDaily + finDaily + gpsDaily;
+  const overheadDaily = overhead.enabled ? overhead.perVehicleMonthly / 30.42 : 0;
+  fixedDaily += overheadDaily;
+  const utilRate = utilisation.enabled ? utilisation.rate / 100 : 1;
+  const adjFixedDaily = utilRate > 0 ? fixedDaily / utilRate : fixedDaily;
+  const tyrePerKm = v.tyre_cost / v.tyre_life;
+  const alignmentPerKm = v.alignment_cost / v.alignment_interval_km;
+  const varPerKm = tyrePerKm + alignmentPerKm + v.maintenance_per_km + v.unexpected_per_km + v.ruc_per_km;
+  return {
+    depDaily, insDaily, wofDaily, regoDaily, finDaily, gpsDaily, overheadDaily,
+    fixedDaily, adjFixedDaily, tyrePerKm, alignmentPerKm, varPerKm,
+  };
+}
+
+const fmt = (n) => `$${n.toFixed(2)}`;
+const fmtKm = (n) => `$${n.toFixed(3)}/km`;
+const fmt0 = (n) => `$${Math.round(n).toLocaleString()}`;
+const fmtK = (n) => n >= 1000 ? `$${(n/1000).toFixed(1)}k` : `$${Math.round(n)}`;
+
+function Field({ label, value, onChange, prefix = "$", step = "100", suffix, small }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      {label && <label style={{ fontSize: 10, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</label>}
+      <div style={{ display: "flex", alignItems: "center", background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 4, overflow: "hidden" }}>
+        {prefix && <span style={{ padding: "5px 7px", color: "#555", fontSize: 11, borderRight: "1px solid #2a2a2a" }}>{prefix}</span>}
+        <input type="number" value={value} onChange={e => onChange(e.target.value === "" ? 0 : parseFloat(e.target.value))} step={step}
+          style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#e8e8e8", padding: small ? "4px 6px" : "5px 7px", fontSize: small ? 11 : 12, fontFamily: "'DM Mono', monospace", minWidth: 0 }} />
+        {suffix && <span style={{ padding: "5px 7px", color: "#555", fontSize: 11, borderLeft: "1px solid #2a2a2a" }}>{suffix}</span>}
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, value, highlight, small, note }) {
+  const colors = { good: "#4ade80", bad: "#f87171", accent: "#fbbf24", dim: "#555" };
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: small ? "3px 0" : "6px 0", borderBottom: "1px solid #1a1a1a" }}>
+      <div>
+        <span style={{ color: small ? "#666" : "#aaa", fontSize: small ? 11 : 12 }}>{label}</span>
+        {note && <span style={{ fontSize: 10, color: "#444", marginLeft: 6 }}>{note}</span>}
+      </div>
+      <span style={{ fontFamily: "'DM Mono', monospace", fontSize: small ? 11 : 12, color: colors[highlight] || "#e8e8e8", fontWeight: highlight && highlight !== "dim" ? 600 : 400 }}>{value}</span>
+    </div>
+  );
+}
+
+function SectionHeader({ num, children, accent }) {
+  return (
+    <div style={{ fontSize: 10, color: accent ? "#fbbf24" : "#666", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 10, paddingBottom: 6, borderBottom: `1px solid ${accent ? "#fbbf2430" : "#1a1a1a"}`, display: "flex", alignItems: "center", gap: 8 }}>
+      {num && <span style={{ color: accent ? "#fbbf24" : "#444", fontWeight: 700 }}>{num}</span>}
+      <span>{children}</span>
+    </div>
+  );
+}
+
+function Panel({ children, accent }) {
+  return <div style={{ background: accent ? "#14120b" : "#111", border: `1px solid ${accent ? "#fbbf2435" : "#1e1e1e"}`, borderRadius: 8, padding: 14, pageBreakInside: "avoid", breakInside: "avoid" }}>{children}</div>;
+}
+
+function Toggle({ label, enabled, onToggle }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+      <span style={{ fontSize: 11, color: "#aaa" }}>{label}</span>
+      <button onClick={onToggle} style={{ width: 36, height: 18, borderRadius: 10, background: enabled ? "#fbbf24" : "#333", border: "none", cursor: "pointer", position: "relative", transition: "background 0.15s" }}>
+        <div style={{ position: "absolute", top: 2, left: enabled ? 20 : 2, width: 14, height: 14, borderRadius: "50%", background: "#0d0d0d", transition: "left 0.15s" }} />
+      </button>
+    </div>
+  );
+}
+
+function App() {
+  const [vehicles, setVehicles] = useState({ ...DEFAULT_VEHICLES });
+  const [vehicleKey, setVehicleKey] = useState("small_van");
+  const [overhead, setOverhead] = useState({ enabled: false, perVehicleMonthly: 200 });
+  const [utilisation, setUtilisation] = useState({ enabled: false, rate: 75 });
+  const [targetMargin, setTargetMargin] = useState(35);
+  const [fleetQty, setFleetQty] = useState({});
+  const [sensitivityPct, setSensitivityPct] = useState(10);
+  const [tiers, setTiers] = useState({ ...DEFAULT_TIERS });
+  const [competitors, setCompetitors] = useState([...DEFAULT_COMPETITORS]);
+
+  const v = vehicles[vehicleKey] || DEFAULT_VEHICLES.small_van;
+  const setV = (updates) => setVehicles({ ...vehicles, [vehicleKey]: { ...v, ...updates } });
+  const addVehicle = () => {
+    const newKey = `custom_${Date.now()}`;
+    setVehicles({ ...vehicles, [newKey]: { ...DEFAULT_VEHICLES.small_van, label: "New Vehicle" } });
+    setVehicleKey(newKey);
+  };
+  const removeVehicle = (key) => {
+    if (Object.keys(vehicles).length <= 1) return;
+    const next = { ...vehicles };
+    delete next[key];
+    setVehicles(next);
+    if (vehicleKey === key) setVehicleKey(Object.keys(next)[0]);
+  };
+  const qty = fleetQty[vehicleKey] || 1;
+  const setQty = (n) => setFleetQty({ ...fleetQty, [vehicleKey]: n });
+
+  const c = calcCosts(v, overhead, utilisation);
+  const stressedV = {
+    ...v,
+    insurance: v.insurance * (1 + sensitivityPct / 100),
+    maintenance_per_km: v.maintenance_per_km * (1 + sensitivityPct / 100),
+    unexpected_per_km: v.unexpected_per_km * (1 + sensitivityPct / 100),
+    tyre_cost: v.tyre_cost * (1 + sensitivityPct / 100),
+    ruc_per_km: v.ruc_per_km * (1 + sensitivityPct / 100),
+  };
+  const stressedC = calcCosts(stressedV, overhead, utilisation);
+
+  const tierCalc = (tier) => {
+    const freeKmCost = c.varPerKm * tier.freeKm;
+    const breakeven = c.adjFixedDaily + freeKmCost;
+    const baseDaily = tiers.daily.override !== null && tiers.daily.override !== 0 ? tiers.daily.override : breakeven * (1 + targetMargin / 100);
+    const calculatedRate = baseDaily * (1 - tier.discount / 100);
+    const effectiveRate = (tier.override !== null && tier.override !== 0) ? tier.override : calculatedRate;
+    const profit = effectiveRate - breakeven;
+    const margin = effectiveRate > 0 ? (profit / effectiveRate) * 100 : 0;
+    const breakevenUtil = effectiveRate > 0 ? (c.fixedDaily / (effectiveRate - c.varPerKm * tier.freeKm)) * 100 : 100;
+    const utilRate = utilisation.enabled ? utilisation.rate / 100 : 1;
+    const annualRevenue = effectiveRate * 365 * utilRate;
+    const annualProfit = profit * 365 * utilRate;
+    const roiYears = v.purchase > 0 && annualProfit > 0 ? v.purchase / annualProfit : Infinity;
+    return { freeKmCost, breakeven, calculatedRate, effectiveRate, profit, margin, breakevenUtil, annualRevenue, annualProfit, roiYears };
+  };
+
+  const updateTier = (key, field, value) => setTiers({ ...tiers, [key]: { ...tiers[key], [field]: value } });
+  const updateCompetitor = (i, field, value) => {
+    const next = [...competitors];
+    next[i] = { ...next[i], [field]: value };
+    setCompetitors(next);
+  };
+
+  const dailyBreakeven = tierCalc(tiers.daily).breakeven;
+  const stressedBreakeven = stressedC.adjFixedDaily + stressedC.varPerKm * tiers.daily.freeKm;
+  const avgCompDaily = competitors.reduce((s, c) => s + (c.daily || 0), 0) / competitors.length;
+  const minCompDaily = Math.min(...competitors.map(c => c.daily || Infinity));
+  const maxCompDaily = Math.max(...competitors.map(c => c.daily || 0));
+
+  const fleetSummary = Object.entries(vehicles).map(([key, veh]) => {
+    const fc = calcCosts(veh, overhead, utilisation);
+    const freeKm = tiers.daily.freeKm;
+    const q = fleetQty[key] || 0;
+    const breakeven = fc.adjFixedDaily + fc.varPerKm * freeKm;
+    const baseDaily = (key === vehicleKey && tiers.daily.override !== null && tiers.daily.override !== 0) ? tiers.daily.override : breakeven * (1 + targetMargin / 100);
+    const utilRate = utilisation.enabled ? utilisation.rate / 100 : 1;
+    const annualRev = baseDaily * 365 * utilRate * q;
+    const annualProfit = (baseDaily - breakeven) * 365 * utilRate * q;
+    return { key, label: veh.label, qty: q, breakeven, dailyRate: baseDaily, annualRev, annualProfit };
+  });
+  const totalAnnualRev = fleetSummary.reduce((s, f) => s + f.annualRev, 0);
+  const totalAnnualProfit = fleetSummary.reduce((s, f) => s + f.annualProfit, 0);
+  const totalFleetQty = fleetSummary.reduce((s, f) => s + f.qty, 0);
+  const barMax = Math.max(maxCompDaily, tierCalc(tiers.daily).effectiveRate, dailyBreakeven) * 1.15;
+
+  const costComponents = [
+    { name: "Depreciation", yearly: c.depDaily * 365, tip: `Purchase price ${fmt0(v.purchase)} over ${v.depYears} years. Longer depreciation lowers daily cost, but only if vehicle truly lasts.` },
+    { name: "Insurance", yearly: v.insurance, tip: "Shop insurance annually. Fleet policies, higher excess, or bundling across Sterling vehicles often reduces premiums 15-30%." },
+    { name: "Scheduled Maintenance", yearly: v.maintenance_per_km * 365 * 80, tip: "In-house servicing at Sterling Clutch & Brake could significantly reduce this vs outsourced." },
+    { name: "Unexpected Maintenance", yearly: v.unexpected_per_km * 365 * 80, tip: "High reserve suggests aging fleet. Track actual unplanned repairs for 3 months to right-size." },
+    { name: "Tyres", yearly: (v.tyre_cost / v.tyre_life) * 365 * 80, tip: "Bulk purchasing or fleet tyre contracts reduce cost per set. Rotating extends life significantly." },
+    { name: "GPS Tracker", yearly: v.gps_monthly * 12, tip: "Most GPS providers offer fleet discounts above 20 vehicles. Renegotiate annually." },
+    { name: "Financing", yearly: v.financing * 365, tip: "Refinancing at lower rates, or paying down principal early, reduces this." },
+    ...(overhead.enabled ? [{ name: "Overhead", yearly: overhead.perVehicleMonthly * 12, tip: "Includes yard, admin, staff allocation. Scaling fleet reduces per-vehicle overhead." }] : []),
+    ...(v.ruc_per_km > 0 ? [{ name: "RUC", yearly: v.ruc_per_km * 365 * 80, tip: "Fixed by govt. EV trucks exempt until 2027." }] : []),
+  ].filter(x => x.yearly > 0).sort((a, b) => b.yearly - a.yearly);
+  const totalAnnualCost = costComponents.reduce((s, x) => s + x.yearly, 0);
+  const top3Pct = totalAnnualCost > 0 ? (costComponents.slice(0, 3).reduce((s, x) => s + x.yearly, 0) / totalAnnualCost) * 100 : 0;
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#0a0a0a", color: "#e8e8e8", fontFamily: "'DM Sans', sans-serif", padding: "20px 12px" }}>
+      <div style={{ maxWidth: 820, margin: "0 auto" }}>
+        <div style={{ marginBottom: 18, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+          <div>
+            <div style={{ fontSize: 10, color: "#444", letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 4 }}>Basic Rentals · Pricing Engine</div>
+            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "#fff" }}>Vehicle Breakeven & Pricing Calculator</h1>
+          </div>
+          <div className="no-print">
+            <button onClick={() => window.print()} style={{ background: "#fbbf24", border: "none", borderRadius: 4, padding: "8px 14px", color: "#0a0a0a", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>⎙ Export PDF</button>
+          </div>
+        </div>
+
+        <div className="no-print" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8, alignItems: "center" }}>
+          {Object.entries(vehicles).map(([key, veh]) => (
+            <div key={key} style={{ position: "relative", display: "flex" }}>
+              <button onClick={() => setVehicleKey(key)} style={{ background: vehicleKey === key ? "#1a1a10" : "transparent", border: `1px solid ${vehicleKey === key ? "#fbbf24" : "#222"}`, borderRadius: 6, padding: "7px 28px 7px 10px", cursor: "pointer", textAlign: "left", color: vehicleKey === key ? "#fff" : "#666", transition: "all 0.15s", minWidth: 130 }}>
+                <div style={{ fontSize: 11, fontWeight: 600 }}>{veh.label}</div>
+                <div style={{ fontSize: 9, color: vehicleKey === key ? "#777" : "#333", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 2 }}>{veh.type === "truck" ? "Truck + RUC" : "Van"}</div>
+              </button>
+              {Object.keys(vehicles).length > 1 && (
+                <button onClick={(e) => { e.stopPropagation(); removeVehicle(key); }} style={{ position: "absolute", top: 4, right: 4, width: 18, height: 18, background: "transparent", border: "none", color: "#555", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 0, borderRadius: 3 }} title="Remove vehicle">×</button>
+              )}
+            </div>
+          ))}
+          <button onClick={addVehicle} style={{ background: "transparent", border: "1px dashed #333", borderRadius: 6, padding: "7px 12px", cursor: "pointer", color: "#666", fontSize: 11, fontWeight: 500 }}>+ Add Vehicle</button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
+          <input type="text" value={v.label} onChange={e => setV({ label: e.target.value })} style={{ background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 4, color: "#e8e8e8", padding: "6px 10px", fontSize: 12, outline: "none", fontFamily: "'DM Sans', sans-serif" }} placeholder="Vehicle name" />
+          <select value={v.type} onChange={e => setV({ type: e.target.value, ruc_per_km: e.target.value === "truck" ? 0.076 : 0 })} style={{ background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 4, color: "#e8e8e8", padding: "6px 10px", fontSize: 12, outline: "none" }}>
+            <option value="van">Van</option>
+            <option value="truck">Truck</option>
+          </select>
+          <Field label="" value={qty} onChange={setQty} prefix="" suffix="in fleet" step="1" />
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+          <Panel>
+            <SectionHeader>Vehicle & Fixed Costs</SectionHeader>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <Field label="Purchase Price" value={v.purchase} onChange={val => setV({ purchase: val })} step="1000" />
+              <Field label="Depreciation" value={v.depYears} onChange={val => setV({ depYears: val })} prefix="" suffix="yrs" step="1" />
+              <Field label="Insurance / yr" value={v.insurance} onChange={val => setV({ insurance: val })} />
+              <Field label="WOF / yr" value={v.wof} onChange={val => setV({ wof: val })} step="10" />
+              <Field label="Rego / yr" value={v.rego} onChange={val => setV({ rego: val })} step="10" />
+              <Field label="GPS / mth" value={v.gps_monthly} onChange={val => setV({ gps_monthly: val })} step="5" />
+              <Field label="Financing / day" value={v.financing} onChange={val => setV({ financing: val })} step="1" />
+            </div>
+          </Panel>
+          <Panel>
+            <SectionHeader>Variable / Per-KM Costs</SectionHeader>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <Field label="Tyre Set" value={v.tyre_cost} onChange={val => setV({ tyre_cost: val })} step="100" />
+              <Field label="Tyre Life" value={v.tyre_life} onChange={val => setV({ tyre_life: val })} prefix="" suffix="km" step="5000" />
+              <Field label="Alignment Cost" value={v.alignment_cost} onChange={val => setV({ alignment_cost: val })} step="10" />
+              <Field label="Every X km" value={v.alignment_interval_km} onChange={val => setV({ alignment_interval_km: val })} prefix="" suffix="km" step="5000" />
+              <Field label="Sched. Maint" value={v.maintenance_per_km} onChange={val => setV({ maintenance_per_km: val })} step="0.01" suffix="/km" />
+              <Field label="Unexpected" value={v.unexpected_per_km} onChange={val => setV({ unexpected_per_km: val })} step="0.01" suffix="/km" />
+              {v.type === "truck" && <Field label="RUC" value={v.ruc_per_km} onChange={val => setV({ ruc_per_km: val })} step="0.005" suffix="/km" />}
+            </div>
+          </Panel>
+        </div>
+
+        <Panel>
+          <SectionHeader>Optional Adjustments</SectionHeader>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+            <div>
+              <Toggle label="Overhead allocation" enabled={overhead.enabled} onToggle={() => setOverhead({ ...overhead, enabled: !overhead.enabled })} />
+              {overhead.enabled && <Field label="Overhead / vehicle / mth" value={overhead.perVehicleMonthly} onChange={val => setOverhead({ ...overhead, perVehicleMonthly: val })} step="25" />}
+            </div>
+            <div>
+              <Toggle label="Utilisation rate" enabled={utilisation.enabled} onToggle={() => setUtilisation({ ...utilisation, enabled: !utilisation.enabled })} />
+              {utilisation.enabled && (
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span style={{ fontSize: 10, color: "#888" }}>Hired days</span>
+                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#fbbf24" }}>{utilisation.rate}%</span>
+                  </div>
+                  <input type="range" min="30" max="100" value={utilisation.rate} onChange={e => setUtilisation({ ...utilisation, rate: Number(e.target.value) })} style={{ width: "100%", accentColor: "#fbbf24" }} />
+                </div>
+              )}
+            </div>
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: 11, color: "#aaa" }}>Target margin</span>
+                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#fbbf24" }}>{targetMargin}%</span>
+              </div>
+              <input type="range" min="10" max="70" value={targetMargin} onChange={e => setTargetMargin(Number(e.target.value))} style={{ width: "100%", accentColor: "#fbbf24" }} />
+              <div style={{ fontSize: 10, color: "#555", marginTop: 4 }}>Used to suggest daily rate</div>
+            </div>
+          </div>
+        </Panel>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+          <Panel accent>
+            <SectionHeader num="A" accent>Daily Breakeven</SectionHeader>
+            <Row label="Depreciation" value={fmt(c.depDaily)} small />
+            <Row label="Insurance" value={fmt(c.insDaily)} small />
+            <Row label="WOF" value={fmt(c.wofDaily)} small />
+            <Row label="Rego" value={fmt(c.regoDaily)} small />
+            <Row label="GPS" value={fmt(c.gpsDaily)} small />
+            {v.financing > 0 && <Row label="Financing" value={fmt(c.finDaily)} small />}
+            {overhead.enabled && <Row label="Overhead" value={fmt(c.overheadDaily)} small />}
+            <div style={{ marginTop: 6 }}>
+              <Row label="Fixed / day" value={fmt(c.fixedDaily)} small highlight="dim" />
+              <Row label={utilisation.enabled ? `Adj. (${utilisation.rate}% util.)` : "Daily breakeven (fixed)"} value={fmt(c.adjFixedDaily)} highlight="accent" />
+            </div>
+          </Panel>
+          <Panel accent>
+            <SectionHeader num="B" accent>Per-KM Cost</SectionHeader>
+            <Row label="Tyres" value={fmtKm(c.tyrePerKm)} small />
+            <Row label="Alignment" value={fmtKm(c.alignmentPerKm)} small />
+            <Row label="Scheduled Maint." value={fmtKm(v.maintenance_per_km)} small />
+            <Row label="Unexpected Maint." value={fmtKm(v.unexpected_per_km)} small />
+            {v.ruc_per_km > 0 && <Row label="RUC" value={fmtKm(v.ruc_per_km)} small />}
+            <div style={{ marginTop: 6 }}>
+              <Row label="Cost per km" value={fmtKm(c.varPerKm)} highlight="accent" />
+            </div>
+          </Panel>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <Panel>
+            <SectionHeader>Cost Diagnostic — What's Driving Your Breakeven?</SectionHeader>
+            <div style={{ fontSize: 11, color: "#aaa", marginBottom: 10 }}>
+              Top 3 drivers make up <span style={{ color: "#fbbf24", fontWeight: 600 }}>{top3Pct.toFixed(0)}%</span> of annual costs.
+            </div>
+            {costComponents.slice(0, 6).map((comp, i) => {
+              const pct = totalAnnualCost > 0 ? (comp.yearly / totalAnnualCost) * 100 : 0;
+              const isBig = i === 0;
+              return (
+                <div key={comp.name} style={{ marginBottom: 10 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "140px 1fr 80px 50px", gap: 10, alignItems: "center", marginBottom: 3 }}>
+                    <div style={{ fontSize: 12, color: isBig ? "#fbbf24" : "#ccc", fontWeight: isBig ? 600 : 400 }}>{isBig && "▲ "}{comp.name}</div>
+                    <div style={{ height: 14, background: "#0f0f0f", borderRadius: 2, position: "relative" }}>
+                      <div style={{ height: "100%", width: `${pct}%`, background: isBig ? "#fbbf24" : "#555", borderRadius: 2, transition: "width 0.2s" }} />
+                    </div>
+                    <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#aaa", textAlign: "right" }}>{fmtK(comp.yearly)}/yr</div>
+                    <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#666", textAlign: "right" }}>{pct.toFixed(0)}%</div>
+                  </div>
+                  {isBig && <div style={{ fontSize: 11, color: "#888", padding: "6px 10px", background: "#14120b", borderRadius: 3, border: "1px solid #fbbf2420", lineHeight: 1.5 }}>💡 {comp.tip}</div>}
+                </div>
+              );
+            })}
+          </Panel>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <Panel>
+            <SectionHeader>Sensitivity — What If Costs Rise?</SectionHeader>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+              <span style={{ fontSize: 11, color: "#aaa" }}>Increase variable costs & insurance by</span>
+              <input type="range" min="0" max="40" value={sensitivityPct} onChange={e => setSensitivityPct(Number(e.target.value))} style={{ flex: 1, accentColor: "#f87171" }} />
+              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: "#f87171", fontWeight: 600, minWidth: 40 }}>+{sensitivityPct}%</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+              <div style={{ padding: 10, background: "#0f0f0f", borderRadius: 4 }}>
+                <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Current breakeven</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 15, color: "#fbbf24" }}>{fmt0(dailyBreakeven)}</div>
+              </div>
+              <div style={{ padding: 10, background: "#0f0f0f", borderRadius: 4 }}>
+                <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Stressed breakeven</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 15, color: "#f87171" }}>{fmt0(stressedBreakeven)}</div>
+              </div>
+              <div style={{ padding: 10, background: "#0f0f0f", borderRadius: 4 }}>
+                <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Difference</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 15, color: "#e8e8e8" }}>+{fmt0(stressedBreakeven - dailyBreakeven)}/day</div>
+              </div>
+            </div>
+          </Panel>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <Panel>
+            <SectionHeader num="C">Your Pricing Tiers</SectionHeader>
+            <div style={{ overflowX: "auto" }}>
+              <div style={{ minWidth: 720 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 0.8fr 0.8fr 0.9fr 0.9fr 0.9fr 1fr 1.1fr", gap: 6, alignItems: "center", fontSize: 9, color: "#666", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8, paddingBottom: 6, borderBottom: "1px solid #1a1a1a" }}>
+                  <div>Tier</div><div>Discount</div><div>Free km</div><div>Calc. rate</div><div>Override</div><div>Breakeven</div><div>Profit / margin</div><div>BE util. / ROI</div>
+                </div>
+                {Object.entries(tiers).map(([key, tier]) => {
+                  const calc = tierCalc(tier);
+                  return (
+                    <div key={key} style={{ display: "grid", gridTemplateColumns: "1fr 0.8fr 0.8fr 0.9fr 0.9fr 0.9fr 1fr 1.1fr", gap: 6, alignItems: "center", padding: "6px 0", borderBottom: "1px solid #1a1a1a" }}>
+                      <div style={{ fontSize: 12, color: "#e8e8e8", fontWeight: 500 }}>{tier.label}</div>
+                      <div>{key === "daily" ? <span style={{ fontSize: 11, color: "#555", fontFamily: "'DM Mono', monospace" }}>base</span> : <Field label="" value={tier.discount} onChange={val => updateTier(key, "discount", val)} prefix="" suffix="%" step="1" small />}</div>
+                      <Field label="" value={tier.freeKm} onChange={val => updateTier(key, "freeKm", val)} prefix="" suffix="km" step="10" small />
+                      <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#888" }}>{fmt0(calc.calculatedRate)}</div>
+                      <div><Field label="" value={tier.override === null ? "" : tier.override} onChange={val => updateTier(key, "override", val === 0 ? null : val)} step="5" small /></div>
+                      <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#fbbf24" }}>{fmt0(calc.breakeven)}</div>
+                      <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: calc.profit >= 0 ? "#4ade80" : "#f87171", fontWeight: 600 }}>
+                        {calc.profit >= 0 ? "+" : ""}{fmt0(calc.profit)}<span style={{ fontSize: 10, color: "#555", marginLeft: 4 }}>({calc.margin.toFixed(0)}%)</span>
+                      </div>
+                      <div style={{ fontSize: 10 }}>
+                        <div style={{ fontFamily: "'DM Mono', monospace", color: calc.breakevenUtil <= 70 ? "#4ade80" : calc.breakevenUtil <= 90 ? "#fbbf24" : "#f87171" }}>{calc.breakevenUtil > 100 ? "∞" : `${calc.breakevenUtil.toFixed(0)}%`} util.</div>
+                        <div style={{ color: "#666", fontFamily: "'DM Mono', monospace" }}>{calc.roiYears === Infinity || calc.roiYears > 50 ? "—" : `${calc.roiYears.toFixed(1)}y ROI`}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ fontSize: 10, color: "#555", marginTop: 8, lineHeight: 1.5 }}>
+              <strong style={{ color: "#888" }}>BE util. %</strong> = min % of days vehicle must be hired to cover fixed costs. <strong style={{ color: "#888" }}>ROI</strong> = years to pay back purchase price.
+            </div>
+          </Panel>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <Panel>
+            <SectionHeader num="D">Competitors & Market Position</SectionHeader>
+            <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 1fr", gap: 6, alignItems: "center", fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8, paddingBottom: 6, borderBottom: "1px solid #1a1a1a" }}>
+              <div>Competitor</div><div>Daily</div><div>Weekly</div><div>Monthly</div>
+            </div>
+            {competitors.map((comp, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 1fr", gap: 6, alignItems: "center", padding: "4px 0" }}>
+                <input type="text" value={comp.name} onChange={e => updateCompetitor(i, "name", e.target.value)} style={{ background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 4, color: "#e8e8e8", padding: "5px 8px", fontSize: 12, outline: "none", fontFamily: "'DM Sans', sans-serif" }} />
+                <Field label="" value={comp.daily} onChange={val => updateCompetitor(i, "daily", val)} step="5" small />
+                <Field label="" value={comp.weekly} onChange={val => updateCompetitor(i, "weekly", val)} step="10" small />
+                <Field label="" value={comp.monthly} onChange={val => updateCompetitor(i, "monthly", val)} step="50" small />
+              </div>
+            ))}
+            <div style={{ marginTop: 10, padding: "8px 10px", background: "#0f0f0f", borderRadius: 4, fontSize: 11, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+              <div><span style={{ color: "#555" }}>Low: </span><span style={{ color: "#4ade80", fontFamily: "'DM Mono', monospace" }}>{fmt0(minCompDaily)}</span></div>
+              <div><span style={{ color: "#555" }}>Avg: </span><span style={{ color: "#fbbf24", fontFamily: "'DM Mono', monospace" }}>{fmt0(avgCompDaily)}</span></div>
+              <div><span style={{ color: "#555" }}>High: </span><span style={{ color: "#f87171", fontFamily: "'DM Mono', monospace" }}>{fmt0(maxCompDaily)}</span></div>
+            </div>
+            <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8, paddingTop: 8, borderTop: "1px solid #1a1a1a" }}>Daily rate comparison</div>
+            {(() => {
+              const items = [
+                { label: "Your breakeven", value: dailyBreakeven, color: "#f87171", type: "marker" },
+                { label: "Your price", value: tierCalc(tiers.daily).effectiveRate, color: "#fbbf24", type: "you" },
+                ...competitors.map(c => ({ label: c.name, value: c.daily || 0, color: "#666", type: "comp" })),
+              ].sort((a, b) => a.value - b.value);
+              return items.map((item, i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "120px 1fr 60px", gap: 10, alignItems: "center", marginBottom: 5 }}>
+                  <div style={{ fontSize: 11, color: item.type === "you" ? "#fbbf24" : item.type === "marker" ? "#f87171" : "#888", fontWeight: item.type !== "comp" ? 600 : 400 }}>{item.label}</div>
+                  <div style={{ height: 18, background: "#0f0f0f", borderRadius: 3, position: "relative" }}>
+                    <div style={{ height: "100%", width: `${(item.value / barMax) * 100}%`, background: item.color, borderRadius: 3, opacity: item.type === "comp" ? 0.4 : 1, transition: "width 0.2s" }} />
+                  </div>
+                  <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: item.color, textAlign: "right", fontWeight: 600 }}>{fmt0(item.value)}</div>
+                </div>
+              ));
+            })()}
+          </Panel>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <Panel>
+            <SectionHeader num="E">Fleet Summary</SectionHeader>
+            <div style={{ fontSize: 10, color: "#666", marginBottom: 10 }}>Set quantities at the top of each vehicle tab.</div>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 0.6fr 1fr 1fr 1fr 1fr", gap: 6, fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8, paddingBottom: 6, borderBottom: "1px solid #1a1a1a" }}>
+              <div>Vehicle</div><div>Qty</div><div>Breakeven/day</div><div>Rate/day</div><div>Annual rev</div><div>Annual profit</div>
+            </div>
+            {fleetSummary.map(f => (
+              <div key={f.key} style={{ display: "grid", gridTemplateColumns: "2fr 0.6fr 1fr 1fr 1fr 1fr", gap: 6, alignItems: "center", padding: "5px 0", borderBottom: "1px solid #1a1a1a", opacity: f.qty === 0 ? 0.35 : 1 }}>
+                <div style={{ fontSize: 12 }}>{f.label}</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#fbbf24" }}>{f.qty}</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#aaa" }}>{fmt0(f.breakeven)}</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#aaa" }}>{fmt0(f.dailyRate)}</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#e8e8e8" }}>{fmtK(f.annualRev)}</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: f.annualProfit >= 0 ? "#4ade80" : "#f87171", fontWeight: 600 }}>{fmtK(f.annualProfit)}</div>
+              </div>
+            ))}
+            <div style={{ marginTop: 10, padding: "10px 12px", background: "#14120b", border: "1px solid #fbbf2435", borderRadius: 4, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 10, color: "#fbbf24", textTransform: "uppercase", letterSpacing: "0.08em" }}>Total fleet</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 16, color: "#fff", fontWeight: 600 }}>{totalFleetQty} vehicles</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: "#fbbf24", textTransform: "uppercase", letterSpacing: "0.08em" }}>Annual revenue</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 16, color: "#fff", fontWeight: 600 }}>{fmtK(totalAnnualRev)}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: "#fbbf24", textTransform: "uppercase", letterSpacing: "0.08em" }}>Annual profit</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 16, color: totalAnnualProfit >= 0 ? "#4ade80" : "#f87171", fontWeight: 600 }}>{fmtK(totalAnnualProfit)}</div>
+              </div>
+            </div>
+          </Panel>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <Panel accent>
+            <SectionHeader num="F" accent>Pricing Recommendations</SectionHeader>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 12 }}>
+              <div style={{ padding: 10, background: "#0f0f0f", borderRadius: 6, border: "1px solid #f8717130" }}>
+                <div style={{ fontSize: 10, color: "#f87171", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Floor (breakeven)</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 18, color: "#f87171", fontWeight: 600 }}>{fmt0(dailyBreakeven)}</div>
+                <div style={{ fontSize: 10, color: "#555", marginTop: 2 }}>Never below this</div>
+              </div>
+              <div style={{ padding: 10, background: "#0f0f0f", borderRadius: 6, border: "1px solid #fbbf2435" }}>
+                <div style={{ fontSize: 10, color: "#fbbf24", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{targetMargin}% margin</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 18, color: "#fbbf24", fontWeight: 600 }}>{fmt0(dailyBreakeven * (1 + targetMargin/100))}</div>
+                <div style={{ fontSize: 10, color: "#555", marginTop: 2 }}>Target price</div>
+              </div>
+              <div style={{ padding: 10, background: "#0f0f0f", borderRadius: 6, border: "1px solid #4ade8030" }}>
+                <div style={{ fontSize: 10, color: "#4ade80", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Market ceiling</div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 18, color: "#4ade80", fontWeight: 600 }}>{fmt0(maxCompDaily)}</div>
+                <div style={{ fontSize: 10, color: "#555", marginTop: 2 }}>Max competitor</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 11, color: "#aaa", lineHeight: 1.6, padding: "10px 12px", background: "#0a0a0a", borderRadius: 4, border: "1px solid #1a1a1a" }}>
+              <div style={{ color: "#fbbf24", marginBottom: 6, fontWeight: 600 }}>Strategy notes</div>
+              {dailyBreakeven > avgCompDaily && <div style={{ color: "#f87171", marginBottom: 4 }}>⚠ Your breakeven ({fmt0(dailyBreakeven)}) is above market avg ({fmt0(avgCompDaily)}).</div>}
+              {dailyBreakeven < minCompDaily && <div style={{ color: "#4ade80", marginBottom: 4 }}>✓ You can compete at the market floor and still profit.</div>}
+              {stressedBreakeven > avgCompDaily && dailyBreakeven < avgCompDaily && <div style={{ color: "#fbbf24", marginBottom: 4 }}>⚠ A {sensitivityPct}% cost increase pushes breakeven above market avg.</div>}
+              <div>• Short-term (daily): price near market average</div>
+              <div>• Long-term (monthly / 3mo+): price below market avg to lock in utilisation</div>
+              <div>• Never discount below breakeven</div>
+            </div>
+          </Panel>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+</body>
+</html>
